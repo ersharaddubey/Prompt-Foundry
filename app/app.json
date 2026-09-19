@@ -1,0 +1,52 @@
+{
+  "expo": {
+    "name": "Prompt Foundry",
+    "slug": "prompt-foundry",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "scheme": "somyalaya",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0f0f12"
+    },
+    "android": {
+      "package": "com.promptfoundry.app",
+      "versionCode": 2,
+      "edgeToEdgeEnabled": true,
+      "navigationBarColor": "#1a1a1f",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#0f0f12"
+      },
+      "permissions": [
+        "INTERNET"
+      ]
+    },
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.promptfoundry.app"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      "expo-asset",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/icon.png",
+          "color": "#7c3aed"
+        }
+      ]
+    ],
+    "owner": "ersharaddubey",
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "1d330ed5-8ff4-4778-84dd-4d37802208e2"
+      }
+    }
+  }
+}
