@@ -1,20 +1,85 @@
 import express from 'express';
 import User from '../models/User.js';
 import Notification from '../models/Notification.js';
+import DevicePushToken from '../models/DevicePushToken.js';
 import { protect } from '../middleware/auth.js';
 import { sendExpoPush, getAllPushTokens } from '../lib/push.js';
 
 const router = express.Router();
 
-// ========== Mobile app: register this device's Expo push token ==========
-router.post('/register-token', protect, async (req, res) => {
+async function optionalAuth(req, res, next) {
   try {
-    const { token } = req.body;
-    if (!token) return res.status(400).json({ message: 'Push token required' });
+    const header = req.headers.authorization;
 
-    await User.findByIdAndUpdate(req.user._id, { $addToSet: { pushTokens: token } });
-    res.json({ success: true });
+    if (header && header.startsWith('Bearer ')) {
+      const token = header.split(' ')[1];
+
+      try {
+        const jwt = await import('jsonwebtoken');
+        const User = (await import('../models/User.js')).default;
+
+        const decoded = jwt.default.verify(token, process.env.JWT_SECRET);
+        req.user = await User.findById(decoded.id).select('-password');
+      } catch (e) {
+        // Invalid/expired token is treated as anonymous for token registration.
+        req.user = null;
+      }
+    }
+
+    next();
   } catch (e) {
+    req.user = null;
+    next();
+  }
+}
+
+// ========== Mobile app: register this device's Expo push token ==========
+// Works for both:
+// 1. Logged-in users
+// 2. Anonymous users/devices
+router.post('/register-token', optionalAuth, async (req, res) => {
+  try {
+    const { token, platform = 'android' } = req.body;
+
+    if (!token) {
+      return res.status(400).json({ message: 'Push token required' });
+    }
+
+    const userId = req.user?._id || null;
+
+    // Always keep the device token in the dedicated collection.
+    await DevicePushToken.findOneAndUpdate(
+      { token },
+      {
+        $set: {
+          userId,
+          platform,
+          active: true,
+          lastSeenAt: new Date(),
+        },
+      },
+      {
+        upsert: true,
+        new: true,
+        setDefaultsOnInsert: true,
+      }
+    );
+
+    // Preserve the existing user-level token storage for logged-in users.
+    if (req.user?._id) {
+      await User.findByIdAndUpdate(
+        req.user._id,
+        { $addToSet: { pushTokens: token } }
+      );
+    }
+
+    res.json({
+      success: true,
+      registered: true,
+      anonymous: !userId,
+    });
+  } catch (e) {
+    console.error('Push token registration error:', e);
     res.status(500).json({ message: e.message });
   }
 });
