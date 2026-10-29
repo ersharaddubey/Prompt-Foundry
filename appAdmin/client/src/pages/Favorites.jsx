@@ -4,7 +4,7 @@ import Navbar from '../components/Navbar';
 import PromptCard from '../components/PromptCard';
 import { useAuth } from '../context/AuthContext';
 import api from '../api/axios';
-import { Heart } from 'lucide-react';
+import { Heart, Trash2 } from 'lucide-react';
 
 export default function Favorites() {
   const { user } = useAuth();
@@ -30,12 +30,30 @@ export default function Favorites() {
     fetch();
   }, [user, navigate]);
 
+  const clearAll = async () => {
+    if (!window.confirm('Saare favorites hatane hain?')) return;
+    try {
+      await api.delete('/user/favorites');
+      setFavorites([]);
+    } catch (err) {
+      alert(err.response?.data?.message || 'Clear failed');
+    }
+  };
+
   return (
     <div className="min-h-screen bg-dark-900">
       <Navbar />
       <main className="max-w-[1600px] mx-auto px-4 py-8">
         <h1 className="text-2xl font-bold mb-6 flex items-center gap-2">
           <Heart className="text-pink-500" /> Your Favorites
+          {favorites.length > 0 && (
+            <button
+              onClick={clearAll}
+              className="ml-auto flex items-center gap-2 px-4 py-2 rounded-lg bg-red-900/40 hover:bg-red-800/60 text-red-300 text-sm font-medium"
+            >
+              <Trash2 size={14} /> Delete All
+            </button>
+          )}
         </h1>
 
         {loading ? (
