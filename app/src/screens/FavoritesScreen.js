@@ -5,6 +5,7 @@ import {
   FlatList,
   StyleSheet,
   ActivityIndicator,
+  Alert,
   TouchableOpacity,
   Image,
   RefreshControl,
@@ -52,6 +53,24 @@ export default function FavoritesScreen() {
     }, [load])
   );
 
+  const clearAll = () => {
+    Alert.alert('Delete all favorites?', 'Saare favorites hat jayenge.', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete All',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            await api.delete('/user/favorites');
+            setPrompts([]);
+          } catch (e) {
+            Alert.alert('Error', e?.response?.data?.message || 'Delete all failed');
+          }
+        },
+      },
+    ]);
+  };
+
   const bottomPad = 70 + Math.max(insets.bottom, 10);
 
   if (!user) {
@@ -68,7 +87,15 @@ export default function FavoritesScreen() {
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
-      <Text style={styles.header}>Favorites</Text>
+      <View style={styles.headerRow}>
+        <Text style={styles.header}>Favorites</Text>
+        {prompts.length > 0 && (
+          <TouchableOpacity onPress={clearAll} style={styles.deleteAll}>
+            <Ionicons name="trash-outline" size={16} color="#f87171" />
+            <Text style={styles.deleteAllText}>Delete All</Text>
+          </TouchableOpacity>
+        )}
+      </View>
       {loading ? (
         <ActivityIndicator color={COLORS.primary} style={{ marginTop: 40 }} />
       ) : (
@@ -121,6 +148,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 12,
   },
+  headerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingRight: 16 },
+  deleteAll: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 10, backgroundColor: 'rgba(248,113,113,0.12)' },
+  deleteAllText: { color: '#f87171', fontSize: 12, fontWeight: '700' },
   card: {
     width: CARD_W,
     backgroundColor: COLORS.card,
