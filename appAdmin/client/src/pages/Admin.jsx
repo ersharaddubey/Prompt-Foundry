@@ -237,6 +237,20 @@ export default function Admin() {
     }
   };
 
+  const deleteAllPrompts = async () => {
+    const label = categoryFilter ? `all prompts in "${categoryFilter}"` : 'ALL prompts';
+    if (!window.confirm(`Delete ${label}? Ye undo nahi hoga.`)) return;
+    try {
+      const { data } = await api.delete('/prompts/all', {
+        params: categoryFilter ? { category: categoryFilter } : {},
+      });
+      setMessage(`${data.deletedCount} prompts deleted`);
+      fetchPrompts();
+    } catch (err) {
+      setMessage(err.response?.data?.message || 'Delete all failed');
+    }
+  };
+
   const handleCategoryChange = async (id, newCategory) => {
     try {
       const fd = new FormData();
@@ -273,6 +287,17 @@ export default function Admin() {
     }
   };
 
+  const deleteAllPromos = async () => {
+    if (!window.confirm('Saare promo codes delete karne hain? Ye undo nahi hoga.')) return;
+    try {
+      await api.delete('/promo/all');
+      setMessage('All promo codes deleted');
+      fetchPromos();
+    } catch (err) {
+      setMessage(err.response?.data?.message || 'Delete all failed');
+    }
+  };
+
   // —— Categories ——
   const addCategory = async (e) => {
     e.preventDefault();
@@ -294,6 +319,17 @@ export default function Admin() {
       fetchCategories();
     } catch (e) {
       console.error(e);
+    }
+  };
+
+  const deleteAllCategories = async () => {
+    if (!window.confirm('Saari categories delete karni hain? Ye undo nahi hoga.')) return;
+    try {
+      await api.delete('/categories/all');
+      setMessage('All categories deleted');
+      fetchCategories();
+    } catch (err) {
+      setMessage(err.response?.data?.message || 'Delete all failed');
     }
   };
 
@@ -323,6 +359,17 @@ export default function Admin() {
       setMessage(err.response?.data?.message || 'Failed');
     } finally {
       setNotifSaving(false);
+    }
+  };
+
+  const deleteAllNotifications = async () => {
+    if (!window.confirm('Saari notifications (scheduled bhi) delete karni hain? Scheduled wali ab send nahi hongi.')) return;
+    try {
+      await api.delete('/notifications/all');
+      setMessage('All notifications deleted');
+      fetchNotifications();
+    } catch (err) {
+      setMessage(err.response?.data?.message || 'Delete all failed');
     }
   };
 
@@ -445,6 +492,13 @@ export default function Admin() {
                 className="flex items-center gap-2 bg-violet-600 hover:bg-violet-500 text-white px-4 py-2.5 rounded-xl font-medium transition"
               >
                 <Plus size={18} /> Add Prompt
+              </button>
+              <button
+                onClick={deleteAllPrompts}
+                disabled={prompts.length === 0}
+                className="flex items-center gap-2 bg-red-900/40 hover:bg-red-800/60 disabled:opacity-40 text-red-300 px-4 py-2.5 rounded-xl font-medium transition"
+              >
+                <Trash2 size={16} /> {categoryFilter ? 'Delete category prompts' : 'Delete All'}
               </button>
             </div>
 
@@ -587,6 +641,15 @@ export default function Admin() {
               </button>
             </form>
 
+            <div className="flex justify-end">
+              <button
+                onClick={deleteAllPromos}
+                disabled={promos.length === 0}
+                className="flex items-center gap-2 bg-red-900/40 hover:bg-red-800/60 disabled:opacity-40 text-red-300 px-4 py-2.5 rounded-xl font-medium transition"
+              >
+                <Trash2 size={16} /> Delete All
+              </button>
+            </div>
             <div className="overflow-x-auto rounded-xl border border-dark-600">
               <table className="w-full text-sm">
                 <thead>
@@ -672,6 +735,15 @@ export default function Admin() {
               </div>
             </form>
 
+            <div className="flex justify-end">
+              <button
+                onClick={deleteAllCategories}
+                disabled={categories.length === 0}
+                className="flex items-center gap-2 bg-red-900/40 hover:bg-red-800/60 disabled:opacity-40 text-red-300 px-4 py-2.5 rounded-xl font-medium transition"
+              >
+                <Trash2 size={16} /> Delete All
+              </button>
+            </div>
             <div className="space-y-2">
               {categories.map((c) => (
                 <div
@@ -841,6 +913,15 @@ export default function Admin() {
               </button>
             </form>
 
+            <div className="flex justify-end">
+              <button
+                onClick={deleteAllNotifications}
+                disabled={notifications.length === 0}
+                className="flex items-center gap-2 bg-red-900/40 hover:bg-red-800/60 disabled:opacity-40 text-red-300 px-4 py-2.5 rounded-xl font-medium transition"
+              >
+                <Trash2 size={16} /> Delete All
+              </button>
+            </div>
             <div className="overflow-x-auto rounded-xl border border-dark-600">
               <table className="w-full text-sm">
                 <thead>
