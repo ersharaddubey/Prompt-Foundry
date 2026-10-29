@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { History as HistIcon, RefreshCw, Download, ArrowLeft } from 'lucide-react';
+import { History as HistIcon, RefreshCw, Download, ArrowLeft, Trash2 } from 'lucide-react';
 import Navbar from '../components/Navbar';
 import { useAuth } from '../context/AuthContext';
 import api from '../api/axios';
@@ -34,6 +34,16 @@ export default function History() {
     }
   };
 
+  const deleteAll = async () => {
+    if (!window.confirm('Saari history delete karni hai? Ye undo nahi hoga.')) return;
+    try {
+      await api.delete('/features/history');
+      setItems([]);
+    } catch (e) {
+      alert(e.response?.data?.message || 'Delete all failed');
+    }
+  };
+
   return (
     <div className="min-h-screen bg-dark-900">
       <Navbar />
@@ -41,6 +51,14 @@ export default function History() {
         <div className="flex items-center gap-3 mb-6">
           <button onClick={() => navigate('/generate')} className="p-2 rounded-lg bg-dark-700 border border-dark-500"><ArrowLeft size={18} /></button>
           <h1 className="text-2xl font-bold flex items-center gap-2"><HistIcon className="text-violet-400" /> Prompt History</h1>
+          {items.length > 0 && (
+            <button
+              onClick={deleteAll}
+              className="ml-auto flex items-center gap-2 px-4 py-2 rounded-lg bg-red-900/40 hover:bg-red-800/60 text-red-300 text-sm font-medium"
+            >
+              <Trash2 size={14} /> Delete All
+            </button>
+          )}
         </div>
         {loading ? (
           <p className="text-gray-400">Loading…</p>
