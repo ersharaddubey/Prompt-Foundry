@@ -138,6 +138,16 @@ router.post('/', protect, async (req, res) => {
   }
 });
 
+// ========== Admin: delete ALL notifications (history + pending scheduled) ==========
+router.delete('/all', protect, async (req, res) => {
+  try {
+    const result = await Notification.deleteMany({});
+    res.json({ success: true, deletedCount: result.deletedCount });
+  } catch (e) {
+    res.status(500).json({ message: e.message });
+  }
+});
+
 // ========== Admin: cancel a still-pending scheduled notification ==========
 router.delete('/:id', protect, async (req, res) => {
   try {

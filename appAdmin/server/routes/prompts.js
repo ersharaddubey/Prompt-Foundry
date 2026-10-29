@@ -160,6 +160,18 @@ router.put('/:id', protect, upload.single('image'), async (req, res) => {
   }
 });
 
+// Delete ALL prompts (optional ?category=Name to delete only that category)
+// NOTE: must stay above '/:id' so "all" isn't treated as an id.
+router.delete('/all', protect, async (req, res) => {
+  try {
+    const filter = req.query.category ? { category: req.query.category } : {};
+    const result = await Prompt.deleteMany(filter);
+    res.json({ message: 'Prompts deleted', deletedCount: result.deletedCount });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
 // Delete
 router.delete('/:id', protect, async (req, res) => {
   try {

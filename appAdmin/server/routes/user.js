@@ -35,6 +35,16 @@ router.get('/favorites', protect, async (req, res) => {
   }
 });
 
+// Clear ALL favorites
+router.delete('/favorites', protect, async (req, res) => {
+  try {
+    await User.findByIdAndUpdate(req.user._id, { $set: { favorites: [] } });
+    res.json({ message: 'All favorites cleared' });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
 // Deduct credits (for generation)
 router.post('/deduct-credits', protect, async (req, res) => {
   try {

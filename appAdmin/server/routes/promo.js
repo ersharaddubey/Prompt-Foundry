@@ -43,6 +43,16 @@ router.get('/', protect, async (req, res) => {
   }
 });
 
+// Admin: delete ALL promo codes (above '/:id')
+router.delete('/all', protect, async (req, res) => {
+  try {
+    const result = await PromoCode.deleteMany({});
+    res.json({ message: 'All promo codes deleted', deletedCount: result.deletedCount });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
 // Admin: deactivate / delete
 router.delete('/:id', protect, async (req, res) => {
   try {

@@ -429,6 +429,16 @@ router.get('/history', protect, async (req, res) => {
   }
 });
 
+// Delete ALL of the current user's generation history
+router.delete('/history', protect, async (req, res) => {
+  try {
+    const result = await GeneratedImage.deleteMany({ user: req.user._id });
+    res.json({ success: true, deletedCount: result.deletedCount });
+  } catch (e) {
+    res.status(500).json({ message: e.message });
+  }
+});
+
 router.post('/regenerate', protect, async (req, res) => {
   try {
     const { prompt, ratio = '3:4', model = 'flux', seed } = req.body;

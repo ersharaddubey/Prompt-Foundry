@@ -51,6 +51,16 @@ router.put('/:id', protect, async (req, res) => {
   }
 });
 
+// Admin: delete ALL categories (above '/:id')
+router.delete('/all', protect, async (req, res) => {
+  try {
+    const result = await Category.deleteMany({});
+    res.json({ message: 'All categories deleted', deletedCount: result.deletedCount });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
 // Admin: delete
 router.delete('/:id', protect, async (req, res) => {
   try {
