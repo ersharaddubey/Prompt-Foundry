@@ -1,0 +1,68 @@
+/*
+ * Deploy this file as a Puter Serverless Worker.
+ * Set PROMPT_FOUNDRY_BRIDGE_SECRET below before publishing. The worker source
+ * runs server-side and is not served to the app's visitors. Keep the same value
+ * in Vercel as PUTER_BRIDGE_SECRET.
+ */
+const PROMPT_FOUNDRY_API = 'https://prompt-foundry-nine.vercel.app/api';
+// Replace with a long random value; configure the identical value as PUTER_BRIDGE_SECRET on Vercel.
+const PROMPT_FOUNDRY_BRIDGE_SECRET = '7ae40ac069f8ee5d67662c24a34e5adcc8c2ca84cd9df77a31bf8ce5445f37b7';
+
+router.post('/session', async ({ user }) => {
+  if (!user?.puter) return new Response(JSON.stringify({ message: 'Puter sign-in required' }), { status: 401 });
+  const identity = await user.puter.getUser();
+  const puterId = String(identity?.uuid || '');
+  if (!puterId) return new Response(JSON.stringify({ message: 'Puter identity unavailable' }), { status: 401 });
+
+  if (PROMPT_FOUNDRY_BRIDGE_SECRET.startsWith('REPLACE_')) {
+    return new Response(JSON.stringify({ message: 'Worker secret has not been configured' }), { status: 503 });
+  }
+  const response = await fetch(`${PROMPT_FOUNDRY_API}/auth/puter/issue`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-puter-bridge-secret': PROMPT_FOUNDRY_BRIDGE_SECRET,
+    },
+    body: JSON.stringify({
+      puterId,
+      username: identity.username || '',
+      name: identity.username || 'Puter User',
+    }),
+  });
+  const body = await response.json();
+  return new Response(JSON.stringify(body), {
+    status: response.status,
+    headers: { 'Content-Type': 'application/json' },
+  });
+});
+
+router.post('/generate', async ({ request, user }) => {
+  if (!user?.puter) return new Response(JSON.stringify({ message: 'Puter sign-in required' }), { status: 401 });
+  const body = await request.json();
+  const prompt = String(body?.prompt || '').trim();
+  const ratioText = ['1:1', '3:4', '4:3', '9:16', '16:9'].includes(body?.ratio) ? body.ratio : '3:4';
+  const [rw, rh] = ratioText.split(':').map(Number);
+  const inputImageUrl = String(body?.inputImageUrl || '').trim();
+  if (inputImageUrl && !/^https:\/\//i.test(inputImageUrl)) return new Response(JSON.stringify({ message: 'Invalid reference image URL' }), { status: 400 });
+  if (!prompt || prompt.length > 2048) {
+    return new Response(JSON.stringify({ message: 'Prompt must contain 1–2048 characters' }), { status: 400 });
+  }
+
+  try {
+    const safeName = `${Date.now()}-${crypto.randomUUID()}.png`;
+    const storagePath = `images/${safeName}`;
+    const options = { ratio: { w: rw, h: rh }, puter_output_path: storagePath };
+    if (inputImageUrl) options.input_image = inputImageUrl;
+    await user.puter.ai.txt2img(prompt, options);
+    const imageUrl = await user.puter.fs.getReadURL(storagePath, '10y');
+    return { success: true, imageUrl, storagePath, model: 'puter-user-pays' };
+  } catch (error) {
+    return new Response(JSON.stringify({
+      message: error?.message || 'Puter image generation failed',
+      code: error?.code || error?.errorCode || 'generation_failed',
+    }), { status: 502, headers: { 'Content-Type': 'application/json' } });
+  }
+});
+
+router.get('/health', () => ({ ok: true, service: 'prompt-foundry-puter-bridge' }));
+

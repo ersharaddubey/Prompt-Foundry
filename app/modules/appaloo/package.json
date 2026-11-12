@@ -1,0 +1,15 @@
+{
+  "name": "appaloo",
+  "version": "1.0.0",
+  "description": "Appaloo interstitial ads native module for Expo",
+  "main": "index.js",
+  "types": "src/index.d.ts",
+  "scripts": {},
+  "keywords": ["expo", "appaloo", "ads", "interstitial"],
+  "license": "MIT",
+  "peerDependencies": {
+    "expo": "*",
+    "react": "*",
+    "react-native": "*"
+  }
+}
