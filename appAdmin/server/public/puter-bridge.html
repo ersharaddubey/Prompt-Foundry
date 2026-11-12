@@ -46,11 +46,25 @@
     setStatus('This page must be opened from the Prompt Foundry app.', true);
   }
   async function ensurePuter() {
-    if (!window.puter) throw new Error('Puter service did not load. Check your internet connection.');
-    if (!puter.auth.isSignedIn()) {
-      setStatus('Waiting for Puter authorization…');
-      await puter.auth.signIn();
+    if (!window.puter) {
+      throw new Error('Puter service did not load. Check your internet connection.');
     }
+
+    if (!puter.auth.isSignedIn()) {
+      setStatus('Opening secure Puter sign-in dialog…');
+
+      if (!puter.ui || typeof puter.ui.authenticateWithPuter !== 'function') {
+        throw new Error('Puter authentication dialog is unavailable in this SDK.');
+      }
+
+      await puter.ui.authenticateWithPuter();
+    }
+
+    if (!puter.auth.isSignedIn()) {
+      throw new Error('Puter sign-in did not complete. Please try again.');
+    }
+
+    setStatus('Puter authenticated. Creating your secure session…');
   }
   async function run() {
     if (busy) return;
