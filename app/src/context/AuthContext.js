@@ -1,10 +1,14 @@
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { Modal, View, Text, TouchableOpacity, ActivityIndicator, StyleSheet } from 'react-native';
 import { WebView } from 'react-native-webview';
+import * as WebBrowser from 'expo-web-browser';
+import * as Linking from 'expo-linking';
 import { PUTER_BRIDGE_URL, PUTER_WORKER_URL, COLORS } from '../constants/config';
 import * as SecureStore from 'expo-secure-store';
 import api from '../api/client';
 import { registerForPushNotificationsAsync } from '../utils/push';
+
+WebBrowser.maybeCompleteAuthSession();
 
 const AuthContext = createContext(null);
 
@@ -59,14 +63,62 @@ true;
 
 const POPUP_PATCH_JS = `
 (function () {
+  function log(t) {
+    try { window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'popup-log', text: String(t).slice(0, 3000) })); } catch (e) {}
+  }
+  window.addEventListener('error', function (e) { log('ERR ' + e.message + ' @' + (e.filename || '').split('/').pop() + ':' + e.lineno); });
+  window.addEventListener('unhandledrejection', function (e) { log('REJ ' + (e.reason && (e.reason.message || e.reason))); });
+  ['error', 'warn'].forEach(function (k) {
+    var o = console[k];
+    console[k] = function () { log(k + ' ' + Array.prototype.slice.call(arguments).join(' ')); if (o) o.apply(console, arguments); };
+  });
+  setTimeout(function () {
+    var b = document.body;
+    var r = b ? b.getBoundingClientRect() : { width: -1, height: -1 };
+    log('t+3s body=' + (b ? b.innerHTML.length : -1) + ' vw=' + window.innerWidth + ' vh=' + window.innerHeight + ' bodyRect=' + Math.round(r.width) + 'x' + Math.round(r.height) + ' iframes=' + document.querySelectorAll('iframe').length + ' bg=' + (b ? getComputedStyle(b).backgroundColor : ''));
+  }, 3000);
+  window.addEventListener('error', function (e) {
+    var t = e.target;
+    if (t && t !== window && (t.src || t.href)) log('RESOURCE FAIL ' + (t.src || t.href));
+  }, true);
+  setTimeout(function () {
+    var res = [];
+    try {
+      performance.getEntriesByType('resource').forEach(function (r) {
+        if (/gui-cdn|js\.puter|turnstile|challenges/.test(r.name)) {
+          res.push(r.name.split('/').slice(2).join('/').slice(0, 40) + ' dur=' + Math.round(r.duration) + ' size=' + r.transferSize + ' st=' + (r.responseStatus || '?'));
+        }
+      });
+    } catch (e) { res.push('perf err ' + e.message); }
+    log('DIAG6s readyState=' + document.readyState + ' typeof gui=' + typeof window.gui + ' typeof puter=' + typeof window.puter + ' bodyChildren=' + (document.body ? document.body.children.length : -1) + ' RES: ' + res.join(' | '));
+  }, 6000);
+  try {
+    var _f = window.fetch;
+    window.fetch = function (u, o) {
+      var name = String(u && u.url ? u.url : u).replace('https://', '').slice(0, 60);
+      return _f.apply(this, arguments).then(function (r) { log('FETCH ' + r.status + ' ' + name); return r; },
+        function (e) { log('FETCH FAIL ' + name + ' ' + (e && e.message)); throw e; });
+    };
+    var _o = XMLHttpRequest.prototype.open;
+    XMLHttpRequest.prototype.open = function (m, u) {
+      var name = String(u).replace('https://', '').slice(0, 60);
+      this.addEventListener('loadend', function () { log('XHR ' + this.status + ' ' + name); });
+      return _o.apply(this, arguments);
+    };
+  } catch (e) { log('wrap err ' + e.message); }
+  try { localStorage.setItem('__t', '1'); localStorage.removeItem('__t'); log('localStorage OK'); } catch (e) { log('localStorage FAIL ' + e.message); }
+  log('opener=' + typeof window.opener + ' parentIsSelf=' + (window.parent === window) + ' cookies=' + navigator.cookieEnabled + ' sw=' + ('serviceWorker' in navigator));
   var opener = {
     closed: false,
     postMessage: function (data) {
       window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'opener-message', data: data }));
     }
   };
-  try { Object.defineProperty(window, 'opener', { value: opener, configurable: true }); }
-  catch (e) { try { window.opener = opener; } catch (e2) {} }
+  log('opener before=' + typeof window.opener + ' val=' + String(window.opener));
+  setTimeout(function () {
+    try { Object.defineProperty(window, 'opener', { value: opener, configurable: true }); log('opener defined late'); }
+    catch (e) { try { window.opener = opener; } catch (e2) {} }
+  }, 2500);
   window.close = function () {
     window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'popup-close' }));
   };
@@ -98,6 +150,7 @@ export function AuthProvider({ children }) {
   const [popupUrl, setPopupUrl] = useState(null);
   const [popupError, setPopupError] = useState('');
   const [mainError, setMainError] = useState('');
+  const [popupLog, setPopupLog] = useState('');
 
   const closePopup = () => {
     setPopupUrl(null);
@@ -114,19 +167,28 @@ export function AuthProvider({ children }) {
       );
     } else if (message.type === 'popup-close') {
       setTimeout(closePopup, 300);
+    } else if (message.type === 'popup-log') {
+      console.log('[PUTER POPUP]', message.text);
+      setPopupLog((prev) => (prev + '\n' + message.text).slice(-900));
     }
   };
 
-  const openPuterBridge = (mode, extra = {}) => new Promise((resolve, reject) => {
+  // Real browser (Chrome Custom Tab) flow: Puter's sign-in popup needs a real window.opener,
+  // which an embedded WebView cannot provide. The bridge page redirects back to the app with the result.
+  const openPuterBridge = async (mode, extra = {}) => {
     if (!PUTER_WORKER_URL || !/^https:\/\//i.test(PUTER_WORKER_URL)) {
-      reject(new Error('Puter Worker URL is not configured. Set EXPO_PUBLIC_PUTER_WORKER_URL and rebuild the app.'));
-      return;
+      throw new Error('Puter Worker URL is not configured. Set EXPO_PUBLIC_PUTER_WORKER_URL and rebuild the app.');
     }
-    if (bridgeResolver.current) bridgeResolver.current.reject(new Error('Puter request was replaced.'));
-    bridgeResolver.current = { resolve, reject };
-    const query = new URLSearchParams({ mode, worker: PUTER_WORKER_URL, ...extra });
-    setPuterBridge(`${PUTER_BRIDGE_URL}?${query.toString()}`);
-  });
+    const redirect = Linking.createURL('puter-auth');
+    const query = new URLSearchParams({ mode, worker: PUTER_WORKER_URL, redirect, ...extra });
+    console.log('[PUTER] REDIRECT URL:', redirect);
+    const result = await WebBrowser.openAuthSessionAsync(`${PUTER_BRIDGE_URL}?${query.toString()}`, redirect);
+    console.log('[PUTER] AUTH SESSION RESULT:', result.type, result.url || '');
+    if (result.type !== 'success' || !result.url) {
+      throw new Error('Puter authorization was cancelled or did not return to the app. Please try again.');
+    }
+    return Linking.parse(result.url).queryParams || {};
+  };
 
   const handlePuterBridgeMessage = (event) => {
     console.log('[PUTER DEBUG] BRIDGE MESSAGE:', event.nativeEvent.data);
@@ -310,6 +372,7 @@ export function AuthProvider({ children }) {
               </View>
               <Text style={bridgeStyles.debug} numberOfLines={2}>{popupUrl}</Text>
               {popupError ? <Text style={bridgeStyles.error}>{popupError}</Text> : null}
+              {popupLog ? <Text style={bridgeStyles.log} numberOfLines={9}>{popupLog}</Text> : null}
               <WebView
                 style={{ flex: 1, backgroundColor: '#ffffff' }}
                 source={{ uri: popupUrl }}
@@ -323,7 +386,7 @@ export function AuthProvider({ children }) {
                 originWhitelist={['*']}
                 startInLoadingState
                 renderLoading={() => <View style={bridgeStyles.loading}><ActivityIndicator color={COLORS.primary} /></View>}
-                onLoadStart={({ nativeEvent }) => { setPopupError(''); console.log('[PUTER] POPUP LOAD START:', nativeEvent.url); }}
+                onLoadStart={({ nativeEvent }) => { setPopupError(''); setPopupLog(''); console.log('[PUTER] POPUP LOAD START:', nativeEvent.url); }}
                 onLoadEnd={({ nativeEvent }) => console.log('[PUTER] POPUP LOAD END:', nativeEvent.url)}
                 onHttpError={({ nativeEvent }) => { console.log('[PUTER] POPUP HTTP ERROR:', nativeEvent.statusCode, nativeEvent.url); setPopupError('HTTP ' + nativeEvent.statusCode); }}
                 onError={({ nativeEvent }) => { console.log('[PUTER] POPUP ERROR:', nativeEvent.description); setPopupError(nativeEvent.description || 'Load error'); }}
@@ -338,4 +401,4 @@ export function AuthProvider({ children }) {
 
 export const useAuth = () => useContext(AuthContext);
 
-const bridgeStyles = StyleSheet.create({ debug: { color: '#71717a', fontSize: 10, paddingHorizontal: 12, paddingVertical: 4 }, error: { color: '#fca5a5', fontSize: 12, paddingHorizontal: 12, paddingBottom: 4 }, popup: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: '#0f0f12' }, container: { flex: 1, backgroundColor: '#0f0f12' }, header: { height: 56, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#1a1a1f', borderBottomWidth: 1, borderBottomColor: '#2a2a32' }, title: { color: '#fff', fontWeight: '700' }, close: { color: '#c4b5fd', fontWeight: '600' }, loading: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#0f0f12' }, loadingText: { color: '#9ca3af', marginTop: 12 } });
+const bridgeStyles = StyleSheet.create({ log: { color: '#fcd34d', fontSize: 10, paddingHorizontal: 12, paddingBottom: 4 }, debug: { color: '#71717a', fontSize: 10, paddingHorizontal: 12, paddingVertical: 4 }, error: { color: '#fca5a5', fontSize: 12, paddingHorizontal: 12, paddingBottom: 4 }, popup: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: '#0f0f12' }, container: { flex: 1, backgroundColor: '#0f0f12' }, header: { height: 56, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#1a1a1f', borderBottomWidth: 1, borderBottomColor: '#2a2a32' }, title: { color: '#fff', fontWeight: '700' }, close: { color: '#c4b5fd', fontWeight: '600' }, loading: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#0f0f12' }, loadingText: { color: '#9ca3af', marginTop: 12 } });

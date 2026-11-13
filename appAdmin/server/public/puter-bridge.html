@@ -37,12 +37,26 @@
     status.textContent = message;
     status.className = isError ? 'status error' : 'status';
   }
+  const redirect = params.get('redirect') || '';
+  function safeRedirect(u) {
+    // Sirf app ke apne schemes allowed hain (open redirect se bachne ke liye)
+    return /^(somyalaya|exp|exps):\/\//i.test(u);
+  }
   function finish(values) {
     if (window.ReactNativeWebView && window.ReactNativeWebView.postMessage) {
       window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'success', data: values }));
       return;
     }
-    // Web fallback for diagnostics only; the native app uses the embedded WebView bridge.
+    if (redirect && safeRedirect(redirect)) {
+      const target = redirect + (redirect.includes('?') ? '&' : '?') + new URLSearchParams(values).toString();
+      setStatus('Done! Returning to Prompt Foundry…');
+      action.style.display = 'block';
+      action.disabled = false;
+      action.textContent = 'Return to Prompt Foundry';
+      action.onclick = () => { window.location.href = target; };
+      window.location.href = target;
+      return;
+    }
     setStatus('This page must be opened from the Prompt Foundry app.', true);
   }
   async function ensurePuter() {
