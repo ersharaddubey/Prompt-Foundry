@@ -1,8 +1,8 @@
 {
   "crons": [
-    {
-      "path": "/api/notifications/run-scheduled",
-      "schedule": "0 0 * * *"
-    }
-  ]
+    { "path": "/api/notifications/run-scheduled", "schedule": "0 0 * * *" }
+  ],
+  "functions": {
+    "index.js": { "maxDuration": 60 }
+  }
 }

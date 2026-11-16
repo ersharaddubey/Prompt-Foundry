@@ -14,6 +14,7 @@ import categoryRoutes from './routes/categories.js';
 import featuresRoutes from './routes/features.js';
 import notificationRoutes from './routes/notifications.js';
 import travelMemoryRoutes from './routes/travelMemories.js';
+import bannerRoutes from './routes/banners.js';
 
 const app = express();
 const PORT = process.env.PORT || 5001;
@@ -98,6 +99,7 @@ app.use('/api/categories', categoryRoutes);
 app.use('/api/features', featuresRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/travel-memories', travelMemoryRoutes);
+app.use('/api/banners', bannerRoutes);
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);

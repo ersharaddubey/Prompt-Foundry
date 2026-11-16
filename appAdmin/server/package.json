@@ -6,7 +6,6 @@
     "dev": "nodemon index.js",
     "start": "node index.js",
     "seed": "node seed.js",
-    "migrate:puter": "node scripts/migrate-puter.js",
     "qa:billing-removal": "node scripts/verify-billing-removal.mjs"
   },
   "dependencies": {

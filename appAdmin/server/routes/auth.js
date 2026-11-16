@@ -4,8 +4,6 @@ import multer from 'multer';
 import ImageKit from 'imagekit';
 import User from '../models/User.js';
 import { protect } from '../middleware/auth.js';
-import PuterAuthCode from '../models/PuterAuthCode.js';
-import crypto from 'crypto';
 
 const router = express.Router();
 
@@ -59,81 +57,6 @@ const generateToken = (id) => {
   return jwt.sign({ id }, process.env.JWT_SECRET, { expiresIn: '30d' });
 };
 
-
-// Puter bridge: only the owner's deployed Puter Worker knows PUTER_BRIDGE_SECRET.
-// The mobile app never receives this shared secret or a Puter access token.
-router.post('/puter/issue', async (req, res) => {
-  try {
-    const expected = process.env.PUTER_BRIDGE_SECRET;
-    const supplied = req.get('x-puter-bridge-secret');
-    if (!expected || !supplied || supplied.length !== expected.length || !crypto.timingSafeEqual(Buffer.from(supplied), Buffer.from(expected))) {
-      return res.status(401).json({ message: 'Invalid Puter bridge credentials' });
-    }
-
-    const puterId = String(req.body?.puterId || '').trim();
-    const username = String(req.body?.username || '').trim().slice(0, 80);
-    const displayName = String(req.body?.name || username || 'Puter User').trim().slice(0, 60);
-    if (!puterId || puterId.length > 200) return res.status(400).json({ message: 'Verified Puter identity is required' });
-
-    const emailKey = crypto.createHash('sha256').update(puterId).digest('hex').slice(0, 32);
-    const email = `puter_${emailKey}@users.promptfoundry.local`;
-    let user = await User.findOne({ puterId });
-    if (!user) {
-      user = await User.findOne({ email });
-      if (!user) {
-        user = await User.create({
-          name: displayName,
-          email,
-          password: crypto.randomBytes(48).toString('base64url'),
-          authProvider: 'puter',
-          puterId,
-          puterUsername: username,
-          credits: 0,
-          dailyCredits: 0,
-        });
-      } else {
-        user.puterId = puterId;
-        user.authProvider = 'puter';
-        user.puterUsername = username;
-      }
-    } else {
-      user.puterUsername = username || user.puterUsername;
-      if (displayName && (!user.name || user.name === 'Puter User')) user.name = displayName;
-    }
-    await user.save();
-
-    const rawCode = crypto.randomBytes(32).toString('base64url');
-    const codeHash = crypto.createHash('sha256').update(rawCode).digest('hex');
-    await PuterAuthCode.create({ codeHash, user: user._id, expiresAt: new Date(Date.now() + 2 * 60 * 1000) });
-    res.json({ code: rawCode, expiresIn: 120 });
-  } catch (error) {
-    console.error('Puter identity provisioning failed:', error);
-    res.status(500).json({ message: 'Could not create Prompt Foundry session' });
-  }
-});
-
-// One-time exchange: code is short-lived, stored only as a SHA-256 hash and consumed atomically.
-router.post('/puter/exchange', async (req, res) => {
-  try {
-    const code = String(req.body?.code || '');
-    if (code.length < 32 || code.length > 100) return res.status(400).json({ message: 'Invalid or expired sign-in code' });
-    const codeHash = crypto.createHash('sha256').update(code).digest('hex');
-    const authCode = await PuterAuthCode.findOneAndDelete({ codeHash, expiresAt: { $gt: new Date() } });
-    if (!authCode) return res.status(401).json({ message: 'Sign-in code expired or already used. Please try again.' });
-    const user = await User.findById(authCode.user).select('-password').populate('favorites');
-    if (!user) return res.status(401).json({ message: 'Account not found' });
-    res.json({
-      _id: user._id, name: user.name, email: user.email, avatar: user.avatar || '',
-      credits: user.credits || 0, dailyCredits: user.dailyCredits || 0,
-      favorites: user.favorites || [], authProvider: 'puter',
-      puterUsername: user.puterUsername || '',
-      token: generateToken(user._id),
-    });
-  } catch (error) {
-    console.error('Puter session exchange failed:', error);
-    res.status(500).json({ message: 'Could not finish sign-in' });
-  }
-});
 
 // Register
 router.post('/register', async (req, res) => {

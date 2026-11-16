@@ -20,9 +20,6 @@ const userSchema = new mongoose.Schema(
       required: false,
       minlength: 6,
     },
-    authProvider: { type: String, enum: ['local', 'puter'], default: 'local', index: true },
-    puterId: { type: String, unique: true, sparse: true, index: true },
-    puterUsername: { type: String, default: '' },
     avatar: {
       type: String,
       default: '',
@@ -38,6 +35,11 @@ const userSchema = new mongoose.Schema(
     lastDailyReset: {
       type: Date,
       default: Date.now,
+    },
+    generationLockUntil: { type: Date, default: null },
+    generationUsage: {
+      type: [{ jobId: String, createdAt: Date, status: { type: String, enum: ['pending', 'success', 'failed'] } }],
+      default: [],
     },
     favorites: [
       {

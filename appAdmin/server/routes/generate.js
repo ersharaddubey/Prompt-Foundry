@@ -17,7 +17,7 @@ const upload = multer({
   fileFilter: (_req, file, cb) => file.mimetype?.startsWith('image/') ? cb(null, true) : cb(new Error('Only image files are allowed')),
 });
 const HORDE_BASE = 'https://aihorde.net/api/v2';
-const HORDE_API_KEY = process.env.AI_HORDE_API_KEY || '0000000000'; // anonymous fallback
+const HORDE_API_KEY = process.env.AI_HORDE_API_KEY || '0000000000';
 const CLIENT_AGENT = process.env.AI_HORDE_CLIENT_AGENT || 'PromptFoundry:1.0.0:contact@promptfoundry.app';
 const HOUR_MS = 60 * 60 * 1000;
 const DAY_MS = 24 * HOUR_MS;
@@ -60,7 +60,6 @@ async function uploadToImageKit(buffer, folder = '/prompt-foundry/generated') {
 }
 
 function dimensionsForRatio(ratio) {
-  // AI Horde rejects anonymous requests above 576x576 pixels of area, and sizes must be multiples of 64.
   return ({
     '1:1': [512, 512], '3:4': [448, 576], '4:3': [576, 448],
     '9:16': [320, 576], '16:9': [576, 320],
@@ -175,7 +174,6 @@ router.get('/ai-horde/:jobId', protect, async (req, res) => {
       check = await axios.get(`${HORDE_BASE}/generate/check/${job.providerRequestId}`, { headers: hordeHeaders(), timeout: 15000 });
     } catch (e) {
       const code = e.response?.status;
-      // Timeout / 429 / 5xx from Horde are transient: keep the job pending and retry on next poll.
       if (!code || code === 429 || code >= 500) return res.json({ status: 'pending', queuePosition: null, waitTime: null });
       throw e;
     }
