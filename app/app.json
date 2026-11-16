@@ -2,13 +2,13 @@
   "expo": {
     "name": "Prompt Foundry",
     "slug": "prompt-foundry",
-    "version": "1.1.0",
+    "version": "1.1.2",
     "orientation": "portrait",
     "userInterfaceStyle": "dark",
     "scheme": "somyalaya",
     "android": {
       "package": "com.promptfoundry.app",
-      "versionCode": 3,
+      "versionCode": 43,
       "adaptiveIcon": {
         "backgroundColor": "#0f0f12"
       },
@@ -47,13 +47,18 @@
           }
         }
       ],
-      "./plugins/withAppaloo.js"
+      "./plugins/withAppaloo.js",
+      "@sentry/react-native"
     ],
-    "owner": "ersharaddubey",
+    "owner": "promptwala",
     "extra": {
-      "router": {},
+      "router": {
+        "asyncRoutes": {
+          "web": true
+        }
+      },
       "eas": {
-        "projectId": "1d330ed5-8ff4-4778-84dd-4d37802208e2"
+        "projectId": "1deb7694-0e6d-4c09-a7f6-2b040105aece"
       }
     }
   }

@@ -1,3 +1,4 @@
+import * as Sentry from '@sentry/react-native';
 import React, { useState, useEffect } from 'react';
 import {
   View,
@@ -125,9 +126,12 @@ export default function GenerateScreen() {
     try {
       // Text and reference-image generation both run under the customer's Puter account.
       // Uploaded reference files stay on the existing ImageKit account; output is saved to the customer's Puter drive.
+      Sentry.addBreadcrumb({ category: 'generate', message: 'generate start' });
       const data = await generateWithPuter(prompt.trim(), ratio, localImage);
+      Sentry.addBreadcrumb({ category: 'generate', message: 'generateWithPuter returned', data: { hasUrl: !!(data && data.imageUrl) } });
       if (data.imageUrl) {
         setResult(data.imageUrl);
+        Sentry.addBreadcrumb({ category: 'generate', message: 'setResult called' });
         setFromCache(false);
         if (inspiration?.id) {
           api.post(`/travel-memories/${inspiration.id}/inspire`, {
@@ -141,6 +145,7 @@ export default function GenerateScreen() {
         setError(data.message || 'Generation failed');
       }
     } catch (err) {
+      Sentry.captureException(err);
       setError(err.response?.data?.message || err.message || 'Generation failed');
     } finally {
       setGenerating(false);
@@ -161,9 +166,6 @@ export default function GenerateScreen() {
         contentContainerStyle={{ padding: 16, paddingBottom: bottomPad }}
         keyboardShouldPersistTaps="handled"
       >
-        <Text style={styles.hint}>
-          AI generation uses your own Puter account and billing. Optional reference uploads remain on Prompt Foundry’s existing ImageKit storage; generated outputs are saved to your Puter drive.
-        </Text>
 
         {inspiration && (
           <View style={styles.inspireBanner}>
@@ -207,7 +209,6 @@ export default function GenerateScreen() {
             <TouchableOpacity style={styles.removeImg} onPress={clearImage}>
               <Ionicons name="close-circle" size={28} color="#fff" />
             </TouchableOpacity>
-            <Text style={styles.previewLabel}>Reference upload uses Prompt Foundry ImageKit; generation is billed by your Puter account</Text>
           </View>
         )}
 

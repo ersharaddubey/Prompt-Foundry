@@ -1,3 +1,4 @@
+import * as Sentry from '@sentry/react-native';
 import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Alert, ActivityIndicator } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -18,6 +19,7 @@ export default function LoginScreen() {
       await puterLogin();
       router.replace('/(tabs)');
     } catch (err) {
+      Sentry.captureException(err);
       Alert.alert('Sign-in failed', err.response?.data?.message || err.message || 'Could not sign in with Puter.');
     } finally {
       setLoading(false);

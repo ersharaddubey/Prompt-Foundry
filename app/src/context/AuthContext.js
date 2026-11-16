@@ -1,3 +1,4 @@
+import * as Sentry from '@sentry/react-native';
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { Modal, View, Text, TouchableOpacity, ActivityIndicator, StyleSheet } from 'react-native';
 import { WebView } from 'react-native-webview';
@@ -184,6 +185,7 @@ export function AuthProvider({ children }) {
     console.log('[PUTER] REDIRECT URL:', redirect);
     const result = await WebBrowser.openAuthSessionAsync(`${PUTER_BRIDGE_URL}?${query.toString()}`, redirect);
     console.log('[PUTER] AUTH SESSION RESULT:', result.type, result.url || '');
+    Sentry.addBreadcrumb({ category: 'puter', message: 'auth session result: ' + result.type, data: { url: result.url || '' } });
     if (result.type !== 'success' || !result.url) {
       throw new Error('Puter authorization was cancelled or did not return to the app. Please try again.');
     }

@@ -3,10 +3,19 @@ import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import * as Sentry from '@sentry/react-native';
 import { AuthProvider } from '../src/context/AuthContext';
 import { COLORS } from '../src/constants/config';
 
-export default function RootLayout() {
+Sentry.init({
+  dsn: 'https://240bfbcd405f75903e28b2e371d5e626@o4512424104427520.ingest.us.sentry.io/4512424122449920',
+  enableNative: true,
+  enableNativeCrashHandling: true,
+  debug: __DEV__,
+});
+
+
+function RootLayout() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
@@ -30,3 +39,5 @@ export default function RootLayout() {
     </GestureHandlerRootView>
   );
 }
+
+export default Sentry.wrap(RootLayout);
