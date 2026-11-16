@@ -17,7 +17,7 @@ const upload = multer({
   fileFilter: (_req, file, cb) => file.mimetype?.startsWith('image/') ? cb(null, true) : cb(new Error('Only image files are allowed')),
 });
 const HORDE_BASE = 'https://aihorde.net/api/v2';
-const HORDE_API_KEY = process.env.AI_HORDE_API_KEY || '0000000000';
+const ANONYMOUS_KEY = '0000000000';
 const CLIENT_AGENT = process.env.AI_HORDE_CLIENT_AGENT || 'PromptFoundry:1.0.0:contact@promptfoundry.app';
 const HOUR_MS = 60 * 60 * 1000;
 const DAY_MS = 24 * HOUR_MS;
@@ -28,8 +28,34 @@ const imagekit = new ImageKit({
   urlEndpoint: process.env.IMAGEKIT_URL_ENDPOINT || '',
 });
 
+// Preferred realistic/general models (matched by name against what is live on the Horde right now).
+const PREFERRED_MODELS = ['deliberate', 'realistic vision', 'dreamshaper', 'epicrealism'];
+const DEFAULT_NEGATIVE = 'blurry, lowres, deformed face, asymmetrical eyes, bad anatomy, extra fingers, extra limbs, watermark, text, oversaturated';
+let modelCache = { at: 0, models: [] };
+
+async function pickModels() {
+  try {
+    if (Date.now() - modelCache.at > 10 * 60 * 1000) {
+      const { data } = await axios.get(`${HORDE_BASE}/status/models`, {
+        params: { type: 'image', min_count: 1 }, headers: hordeHeaders(), timeout: 10000,
+      });
+      modelCache = { at: Date.now(), models: Array.isArray(data) ? data : [] };
+    }
+    const picked = [];
+    for (const wanted of PREFERRED_MODELS) {
+      const best = modelCache.models
+        .filter((m) => m?.name && m.count > 0 && m.name.toLowerCase().includes(wanted))
+        .sort((a, b) => b.count - a.count)[0];
+      if (best && !picked.includes(best.name)) picked.push(best.name);
+    }
+    return picked.slice(0, 3);
+  } catch (_) {
+    return []; // fall back to Horde's default worker choice
+  }
+}
+
 function hordeHeaders() {
-  return { apikey: HORDE_API_KEY, 'Client-Agent': CLIENT_AGENT, 'Content-Type': 'application/json' };
+  return { apikey: ANONYMOUS_KEY, 'Client-Agent': CLIENT_AGENT, 'Content-Type': 'application/json' };
 }
 
 function quotaSnapshot(events = [], now = Date.now()) {
@@ -61,9 +87,9 @@ async function uploadToImageKit(buffer, folder = '/prompt-foundry/generated') {
 
 function dimensionsForRatio(ratio) {
   return ({
-    '1:1': [512, 512], '3:4': [448, 576], '4:3': [576, 448],
-    '9:16': [320, 576], '16:9': [576, 320],
-  })[ratio] || [448, 576];
+    '1:1': [640, 640], '3:4': [576, 768], '4:3': [768, 576],
+    '9:16': [512, 912], '16:9': [912, 512],
+  })[ratio] || [576, 768];
 }
 
 async function markUsage(userId, jobId, status) {
@@ -111,9 +137,15 @@ router.post('/ai-horde', protect, upload.single('image'), async (req, res) => {
     await user.save();
 
     const [width, height] = dimensionsForRatio(ratio);
+    const finalPrompt = prompt.includes('###') ? prompt : `${prompt} ### ${DEFAULT_NEGATIVE}`;
+    const models = await pickModels();
     const payload = {
-      prompt,
-      params: { width, height, steps: 25, cfg_scale: 7.5, sampler_name: 'k_euler_a', karras: true, n: 1 },
+      prompt: finalPrompt,
+      params: {
+        width, height, steps: 30, cfg_scale: 7, sampler_name: 'k_euler_a', karras: true, n: 1,
+        post_processing: ['GFPGAN'], // face restoration
+      },
+      ...(models.length ? { models } : {}),
       nsfw: false,
       censor_nsfw: true,
       r2: true,
@@ -125,9 +157,11 @@ router.post('/ai-horde', protect, upload.single('image'), async (req, res) => {
       const webp = await sharp(req.file.buffer).rotate().resize({ width: 1024, height: 1024, fit: 'inside', withoutEnlargement: true }).webp({ quality: 86 }).toBuffer();
       payload.source_image = webp.toString('base64');
       payload.source_processing = 'img2img';
+      payload.params.denoising_strength = 0.65;
     } else if (/^https:\/\//i.test(String(req.body?.sourceImageUrl || ''))) {
       payload.source_image = String(req.body.sourceImageUrl).slice(0, 4096);
       payload.source_processing = 'img2img';
+      payload.params.denoising_strength = 0.65;
     }
 
     const submitted = await axios.post(`${HORDE_BASE}/generate/async`, payload, {
@@ -169,17 +203,7 @@ router.get('/ai-horde/:jobId', protect, async (req, res) => {
       return res.status(408).json({ status: 'failed', message: job.error });
     }
 
-    let check;
-    try {
-      check = await axios.get(`${HORDE_BASE}/generate/check/${job.providerRequestId}`, { headers: hordeHeaders(), timeout: 15000 });
-    } catch (e) {
-      const code = e.response?.status;
-      if (!code || code === 429 || code >= 500) return res.json({ status: 'pending', queuePosition: null, waitTime: null });
-      throw e;
-    }
-    if (check.data?.faulted || check.data?.is_possible === false) {
-      throw new Error('No AI Horde worker can serve this request right now. Please try again. Your credit has been restored.');
-    }
+    const check = await axios.get(`${HORDE_BASE}/generate/check/${job.providerRequestId}`, { headers: hordeHeaders(), timeout: 15000 });
     if (!check.data?.done) {
       return res.json({ status: 'pending', queuePosition: check.data?.queue_position ?? null, waitTime: check.data?.wait_time ?? null, finished: check.data?.finished || 0, quota: quotaSnapshot((await User.findById(req.user._id).select('generationUsage').lean())?.generationUsage || []) });
     }
