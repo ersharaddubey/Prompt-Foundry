@@ -8,23 +8,12 @@ import {
 import Navbar from '../components/Navbar';
 import { useAuth } from '../context/AuthContext';
 import api from '../api/axios';
-
-const MODELS = [
-  { id: 'flux', name: 'Cloudflare FLUX.1 Schnell', credits: 2, type: 'Basic' },
-  { id: 'gpt-image', name: 'GPT Image 2', credits: 8, type: 'Premium' },
-  { id: 'seedream', name: 'Seedream 5.0', credits: 10, type: 'Premium' },
-  { id: 'midjourney', name: 'Midjourney', credits: 12, type: 'Premium' },
-];
+import BannerSlider from '../components/BannerSlider';
 
 const RATIOS = ['1:1', '3:4', '4:3', '9:16', '16:9'];
 
 const MODES = [
-  { id: 'single', label: 'Single', icon: Wand2 },
-  { id: 'batch', label: 'Batch ×4', icon: Grid },
-  { id: 'remix', label: 'Remix ×5', icon: Shuffle },
-  { id: 'compare', label: 'Compare', icon: Layers },
-  { id: 'style', label: 'Style Transfer', icon: ArrowRightLeft },
-  { id: 'reverse', label: 'Image→Prompt', icon: Type },
+  { id: 'single', label: 'AI Image', icon: Wand2 },
 ];
 
 export default function Generate() {
@@ -38,7 +27,6 @@ export default function Generate() {
   const [mode, setMode] = useState('single');
   const [prompt, setPrompt] = useState(location.state?.prompt || '');
   const [negative, setNegative] = useState('');
-  const [model, setModel] = useState('flux');
   const [ratio, setRatio] = useState('3:4');
   const [strength, setStrength] = useState(7);
   const [generating, setGenerating] = useState(false);
@@ -58,7 +46,6 @@ export default function Generate() {
   const [creditEstimate, setCreditEstimate] = useState(2);
   const [referenceImage] = useState(location.state?.image || null);
 
-  const selectedModel = MODELS.find((m) => m.id === model);
   const isPremium = (user?.credits || 0) > 0;
 
   useEffect(() => {
@@ -131,44 +118,21 @@ export default function Generate() {
       if (mode === 'single') {
         if (!prompt.trim()) throw new Error('Enter a prompt');
         const formData = new FormData();
-        formData.append('prompt', negative ? `${prompt.trim()}. Avoid: ${negative}` : prompt.trim());
-        formData.append('model', model);
+        formData.append('prompt', negative ? `${prompt.trim()} ### ${negative.trim()}` : prompt.trim());
         formData.append('ratio', ratio);
-        formData.append('amount', selectedModel?.credits || 2);
         if (uploadedImage?.file) formData.append('image', uploadedImage.file);
-        const { data } = await api.post('/generate', formData);
-        if (data.credits) updateUser({ credits: data.credits.credits, dailyCredits: data.credits.dailyCredits });
-        setResult({ imageUrl: data.imageUrl, prompt: data.prompt, model: selectedModel?.name, sourceImageUrl: data.sourceImageUrl, id: data.id });
-        setFromCache(!!data.fromCache);
-      } else if (mode === 'batch') {
-        const { data } = await api.post('/features/batch', { prompt, ratio, model, negative, strength });
-        if (data.credits) updateUser(data.credits);
-        setMultiResults(data.results.map((r) => ({ ...r, label: `Seed ${r.seed}` })));
-      } else if (mode === 'remix') {
-        const { data } = await api.post('/features/remix', { prompt, ratio });
-        if (data.credits) updateUser(data.credits);
-        setMultiResults(data.results.map((r) => ({ ...r, label: r.style })));
-      } else if (mode === 'compare') {
-        const { data } = await api.post('/features/compare', { prompt, ratio });
-        if (data.credits) updateUser(data.credits);
-        setMultiResults(data.results.map((r) => ({ ...r, label: r.model })));
-      } else if (mode === 'style') {
-        if (!styleImage?.file) throw new Error('Upload a reference image');
-        const fd = new FormData();
-        fd.append('prompt', prompt.trim());
-        fd.append('ratio', ratio);
-        fd.append('strength', strength);
-        fd.append('image', styleImage.file);
-        const { data } = await api.post('/features/style-transfer', fd);
-        if (data.credits) updateUser(data.credits);
-        setResult({ imageUrl: data.imageUrl, prompt: data.prompt, model: 'Style Transfer', sourceImageUrl: data.sourceImageUrl, id: data.id });
-      } else if (mode === 'reverse') {
-        if (!reverseImage?.file) throw new Error('Upload an image');
-        const fd = new FormData();
-        fd.append('image', reverseImage.file);
-        fd.append('hint', prompt || '');
-        const { data } = await api.post('/features/image-to-prompt', fd);
-        setReversePrompts(data.prompts || []);
+        else if (referenceImage) formData.append('sourceImageUrl', referenceImage);
+        const { data: submitted } = await api.post('/generate/ai-horde', formData);
+        let status = null;
+        for (let attempt = 0; attempt < 135; attempt++) {
+          await new Promise((resolve) => setTimeout(resolve, 4000));
+          const { data: polled } = await api.get(`/generate/ai-horde/${submitted.jobId}`);
+          status = polled;
+          if (status.status === 'success' || status.status === 'failed') break;
+        }
+        if (status?.status !== 'success' || !status.imageUrl) throw new Error(status?.message || 'AI Horde queue timed out. Please try again.');
+        setResult({ imageUrl: status.imageUrl, prompt: prompt.trim(), model: 'AI Horde community workers', id: submitted.jobId });
+        setFromCache(false);
       }
     } catch (err) {
       setError(err.response?.data?.message || err.message || 'Failed');
@@ -423,22 +387,7 @@ export default function Generate() {
               </div>
             )}
 
-            {/* Model + Ratio for relevant modes */}
-            {(mode === 'single' || mode === 'batch') && (
-              <>
-                <div>
-                  <label className="text-sm text-gray-400 mb-1.5 block">Model</label>
-                  <div className="grid grid-cols-2 gap-2">
-                    {MODELS.map((m) => (
-                      <button key={m.id} onClick={() => setModel(m.id)} className={`p-3 rounded-xl border text-left transition ${model === m.id ? 'border-violet-500 bg-violet-500/10' : 'border-dark-500 bg-dark-700 hover:border-dark-400'}`}>
-                        <p className="text-sm font-medium">{m.name}</p>
-                        <p className="text-xs text-gray-400 mt-0.5">{m.credits} credits · {m.type}</p>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </>
-            )}
+            <p className="text-xs text-gray-500">AI Horde automatically assigns an available community model and worker.</p>
 
             {mode !== 'reverse' && (
               <div>
@@ -463,10 +412,10 @@ export default function Generate() {
               {generating ? (
                 <><div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" /> Working…</>
               ) : (
-                <><Wand2 size={18} /> {mode === 'reverse' ? 'Extract Prompts' : `Generate · ~${creditEstimate} credits`}</>
+                <><Wand2 size={18} /> Generate image</>
               )}
             </button>
-            <p className="text-[11px] text-center text-gray-500">Smart credits: longer / complex prompts cost more</p>
+            <p className="text-[11px] text-center text-gray-500">Free plan: 3 images per rolling hour · 10 per rolling 24 hours</p>
           </div>
 
           {/* Right - Results */}
@@ -475,7 +424,7 @@ export default function Generate() {
               <div className="flex-1 flex flex-col items-center justify-center text-gray-400">
                 <div className="w-12 h-12 border-4 border-violet-500 border-t-transparent rounded-full animate-spin mb-4" />
                 <p>Creating magic…</p>
-                <p className="text-xs text-gray-500 mt-1">May take a few seconds</p>
+                <p className="text-xs text-gray-500 mt-1">AI Horde queue time depends on volunteer worker availability.</p>
               </div>
             ) : multiResults.length > 0 ? (
               <div className="w-full">
@@ -541,12 +490,7 @@ export default function Generate() {
                     </>
                   )}
                   <button
-                    onClick={() => {
-                      api.post('/features/regenerate', { prompt: result.prompt || prompt, ratio, model }).then(({ data }) => {
-                        if (data.credits) updateUser(data.credits);
-                        setResult({ ...result, imageUrl: data.imageUrl, id: data.id });
-                      }).catch((e) => setError(e.response?.data?.message || 'Failed'));
-                    }}
+                    onClick={handleGenerate}
                     className="w-full flex items-center justify-center gap-2 text-sm text-gray-400 hover:text-violet-300 py-2"
                   >
                     <RefreshCw size={14} /> Generate again (new seed)
@@ -562,6 +506,7 @@ export default function Generate() {
             )}
           </div>
         </div>
+        <div className="mt-8"><BannerSlider /></div>
       </div>
     </div>
   );

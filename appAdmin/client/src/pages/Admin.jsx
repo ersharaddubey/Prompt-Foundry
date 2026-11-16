@@ -88,6 +88,9 @@ export default function Admin() {
   const [challengeSaving, setChallengeSaving] = useState(false);
   const [todayChallenge, setTodayChallenge] = useState(null);
   const [aiStatus, setAiStatus] = useState(null);
+  const [banners, setBanners] = useState([]);
+  const [bannerForm, setBannerForm] = useState({ title: '', imageUrl: '', linkUrl: '', order: 0 });
+  const [bannerSaving, setBannerSaving] = useState(false);
 
   useEffect(() => {
     if (!user) navigate('/login');
@@ -233,6 +236,17 @@ export default function Admin() {
     }
   };
 
+  const fetchBanners = async () => { try { const { data } = await api.get('/banners'); setBanners(data || []); } catch (_) {} };
+
+  const saveBanner = async (e) => {
+    e.preventDefault();
+    if (!/^https?:\/\//i.test(bannerForm.imageUrl) || !/^https?:\/\//i.test(bannerForm.linkUrl)) { setMessage('Image URL aur website link dono valid http(s) URLs hone chahiye.'); return; }
+    setBannerSaving(true);
+    try { await api.post('/banners', { ...bannerForm, order: Number(bannerForm.order) || 0 }); setBannerForm({ title: '', imageUrl: '', linkUrl: '', order: 0 }); setMessage('Slider banner saved.'); await fetchBanners(); }
+    catch (err) { setMessage(err.response?.data?.message || 'Banner save failed'); } finally { setBannerSaving(false); }
+  };
+  const deleteBanner = async (id) => { if (!window.confirm('Delete this slider item?')) return; try { await api.delete(`/banners/${id}`); await fetchBanners(); } catch (err) { setMessage(err.response?.data?.message || 'Delete failed'); } };
+
   const fetchTodayChallenge = async () => {
     try {
       const { data } = await api.get('/features/challenge/today');
@@ -248,6 +262,7 @@ export default function Admin() {
     fetchPromos();
     fetchNotifications();
     fetchTodayChallenge();
+    fetchBanners();
     api.get('/generate/provider-status').then(({ data }) => setAiStatus(data)).catch(() => setAiStatus(null));
   }, [search, categoryFilter]);
 
@@ -501,7 +516,7 @@ export default function Admin() {
             <div>
               <h1 className="text-2xl font-bold text-white">Admin Panel</h1>
               <p className="text-sm text-gray-400">
-                Prompts · Travel Memories · Promo Codes · Categories · Daily Challenge · Notifications
+                Prompts · Travel Memories · Slider Banners · Promo Codes · Categories · Daily Challenge · Notifications
               </p>
             </div>
           </div>
@@ -512,6 +527,7 @@ export default function Admin() {
           {[
             { id: 'prompts', label: 'Prompts' },
             { id: 'travel', label: 'Travel Memories' },
+            { id: 'banners', label: 'Slider Banners' },
             { id: 'promo', label: 'Promo Codes' },
             { id: 'categories', label: 'Categories' },
             { id: 'challenge', label: 'Daily Challenge' },
@@ -538,22 +554,37 @@ export default function Admin() {
           </div>
         )}
 
+        {tab === 'banners' && (
+          <section className="max-w-4xl space-y-5">
+            <form onSubmit={saveBanner} className="rounded-2xl border border-dark-600 bg-dark-800 p-5 space-y-3">
+              <h2 className="text-lg font-semibold text-white">Add slider item</h2>
+              <p className="text-sm text-gray-400">Each slide opens its website when a user taps it. Add an image URL and the destination website URL.</p>
+              <input value={bannerForm.title} onChange={(e) => setBannerForm((f) => ({ ...f, title: e.target.value }))} placeholder="Title (optional)" className="w-full rounded-lg bg-dark-700 border border-dark-500 px-3 py-2 text-sm text-white" />
+              <input required type="url" value={bannerForm.imageUrl} onChange={(e) => setBannerForm((f) => ({ ...f, imageUrl: e.target.value }))} placeholder="Banner image URL (https://...)" className="w-full rounded-lg bg-dark-700 border border-dark-500 px-3 py-2 text-sm text-white" />
+              <input required type="url" value={bannerForm.linkUrl} onChange={(e) => setBannerForm((f) => ({ ...f, linkUrl: e.target.value }))} placeholder="Website link to open on tap (https://...)" className="w-full rounded-lg bg-dark-700 border border-dark-500 px-3 py-2 text-sm text-white" />
+              <input type="number" value={bannerForm.order} onChange={(e) => setBannerForm((f) => ({ ...f, order: e.target.value }))} placeholder="Display order" className="w-full rounded-lg bg-dark-700 border border-dark-500 px-3 py-2 text-sm text-white" />
+              <button disabled={bannerSaving} className="rounded-lg bg-violet-600 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50">{bannerSaving ? 'Saving…' : 'Add to slider'}</button>
+            </form>
+            <div className="grid sm:grid-cols-2 gap-4">
+              {banners.map((b) => <div key={b._id} className="rounded-xl border border-dark-600 bg-dark-800 overflow-hidden"><img src={b.imageUrl} alt={b.title || 'Banner'} className="w-full aspect-[16/7] object-cover" /><div className="p-3"><p className="text-sm text-white font-medium">{b.title || 'Untitled slide'}</p><a href={b.linkUrl} target="_blank" rel="noreferrer" className="block text-xs text-violet-300 truncate mt-1">{b.linkUrl}</a><button onClick={() => deleteBanner(b._id)} className="mt-3 text-xs text-red-400 hover:text-red-300">Delete slide</button></div></div>)}
+            </div>
+          </section>
+        )}
+
         {/* ========== AI IMAGE API TAB ========== */}
         {tab === 'ai' && (
           <section className="max-w-3xl rounded-2xl border border-dark-600 bg-dark-800 p-6 text-white">
-            <h2 className="text-xl font-semibold mb-2">Cloudflare Workers AI · FLUX.1 Schnell</h2>
-            <p className="text-sm text-gray-400 mb-5">API credentials are read securely from the backend environment. Secret keys are never sent to this panel or the mobile app.</p>
+            <h2 className="text-xl font-semibold mb-2">AI Horde · Community Image Generation</h2>
+            <p className="text-sm text-gray-400 mb-5">Uses the anonymous AI Horde API from the backend. No provider account or API key is required for users.</p>
             <div className="grid gap-3 sm:grid-cols-2 mb-5">
-              <div className="rounded-xl bg-dark-700 p-4"><p className="text-xs text-gray-400">Provider configuration</p><p className="font-medium mt-1">{aiStatus?.configured ? 'Configured' : 'Not configured'}</p></div>
-              <div className="rounded-xl bg-dark-700 p-4"><p className="text-xs text-gray-400">Free testing mode</p><p className="font-medium mt-1">{aiStatus?.freeTestingMode ? 'ON · test account only' : 'OFF · credits required'}</p></div>
+              <div className="rounded-xl bg-dark-700 p-4"><p className="text-xs text-gray-400">Image provider</p><p className="font-medium mt-1">{aiStatus?.provider || 'AI Horde'}</p></div>
               <div className="rounded-xl bg-dark-700 p-4"><p className="text-xs text-gray-400">Image storage</p><p className="font-medium mt-1">ImageKit · {aiStatus?.storageConfigured ? 'Configured' : 'Not configured'}</p></div>
-              <div className="rounded-xl bg-dark-700 p-4 sm:col-span-2"><p className="text-xs text-gray-400">Test login</p><p className="font-medium mt-1">{aiStatus?.testUserEmail || 'Set TEST_USER_EMAIL on backend'}</p><p className="text-xs text-gray-400 mt-1">Free image generation is restricted to this account.</p></div>
-              <div className="rounded-xl bg-dark-700 p-4 sm:col-span-2"><p className="text-xs text-gray-400">Model</p><p className="font-medium mt-1 break-all">{aiStatus?.model || '@cf/black-forest-labs/flux-1-schnell'}</p></div>
+              <div className="rounded-xl bg-dark-700 p-4 sm:col-span-2"><p className="text-xs text-gray-400">Free generation policy</p><p className="font-medium mt-1">3 images / rolling 60 minutes · 10 images / rolling 24 hours</p></div>
             </div>
             <div className="rounded-xl border border-dark-600 p-4 text-sm text-gray-300">
-              <p className="font-semibold text-white mb-2">Backend environment variables</p>
-              <code className="block whitespace-pre-wrap text-xs leading-6">CLOUDFLARE_API_TOKEN=your_rotated_token\nCLOUDFLARE_ACCOUNT_ID=your_account_id\nCLOUDFLARE_IMAGE_MODEL=@cf/black-forest-labs/flux-1-schnell\nFREE_TESTING_MODE=true</code>
-              <p className="mt-3 text-xs text-amber-300">Set these variables on the backend host, then redeploy/restart. The test account is created automatically. Never put private keys in the frontend or APK.</p>
+              <p className="font-semibold text-white mb-2">Backend configuration</p>
+              <code className="block whitespace-pre-wrap text-xs leading-6">AI_HORDE_CLIENT_AGENT=PromptFoundry:1.0.0:contact-email\nIMAGEKIT_PUBLIC_KEY=...\nIMAGEKIT_PRIVATE_KEY=...\nIMAGEKIT_URL_ENDPOINT=...</code>
+              <p className="mt-3 text-xs text-amber-300">AI Horde is called only from the backend. Keep ImageKit credentials private and configure them on your API host.</p>
             </div>
             <button onClick={() => api.get('/generate/provider-status').then(({ data }) => setAiStatus(data)).catch(() => setMessage('Could not read AI provider status'))} className="mt-4 rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium hover:bg-violet-500">Refresh status</button>
           </section>

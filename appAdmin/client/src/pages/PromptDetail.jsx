@@ -11,6 +11,7 @@ import {
 import Navbar from '../components/Navbar';
 import { useAuth } from '../context/AuthContext';
 import api from '../api/axios';
+import BannerSlider from '../components/BannerSlider';
 
 export default function PromptDetail() {
   const { id } = useParams();
@@ -18,7 +19,6 @@ export default function PromptDetail() {
   const { user, updateUser } = useAuth();
 
   const [prompt, setPrompt] = useState(null);
-  const [related, setRelated] = useState([]);
   const [loading, setLoading] = useState(true);
   const [copied, setCopied] = useState(false);
   const [showFullPrompt, setShowFullPrompt] = useState(false);
@@ -29,12 +29,6 @@ export default function PromptDetail() {
         setLoading(true);
         const { data } = await api.get(`/prompts/${id}`);
         setPrompt(data);
-        const { data: relatedData } = await api.get('/prompts', {
-          params: { category: data.category, limit: 8 },
-        });
-        setRelated(
-          (relatedData.prompts || []).filter((p) => p._id !== data._id).slice(0, 6)
-        );
       } catch (err) {
         console.error(err);
       } finally {
@@ -48,36 +42,32 @@ export default function PromptDetail() {
     (f) => (f._id || f) === prompt?._id
   );
 
-  const goToPricing = () => {
-    navigate('/pricing', { state: { from: `/prompt/${id}` } });
-  };
+  const goToGenerate = () => navigate('/generate', { state: { prompt: prompt?.promptText || '' } });
 
   const handleCopy = async () => {
     if (!prompt?.promptText) return;
-    try {
-      await navigator.clipboard.writeText(prompt.promptText);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-      // After copy → send to payment / pricing
-      setTimeout(() => goToPricing(), 600);
-    } catch (e) {
-      console.error(e);
-    }
+    const imageInstruction = `Create an image using this prompt:\n\n${prompt.promptText}`;
+    const target = `https://chatgpt.com/?q=${encodeURIComponent(imageInstruction)}`;
+    const opened = window.open(target, '_blank', 'noopener,noreferrer');
+    try { await navigator.clipboard.writeText(imageInstruction); } catch (_) {}
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+    if (!opened) window.alert('Prompt copied. Paste it into ChatGPT, Gemini, or your preferred image AI tool.');
   };
 
-  // Generate actions → pricing page (credits required)
+  // Continue in Prompt Foundry's free image generator
   const handleGenerateWithPrompt = async () => {
     try {
       await api.post(`/prompts/${id}/use`);
     } catch (e) {}
-    goToPricing();
+    goToGenerate();
   };
 
   const handleGenerateWithRef = async () => {
     try {
       await api.post(`/prompts/${id}/use`);
     } catch (e) {}
-    goToPricing();
+    goToGenerate();
   };
 
   const handleFavorite = async () => {
@@ -259,32 +249,8 @@ export default function PromptDetail() {
                 </div>
               )}
 
-              {related.length > 0 && (
-                <div>
-                  <h3 className="text-sm font-medium text-gray-300 mb-3">
-                    More like this
-                  </h3>
-                  <div className="grid grid-cols-2 gap-3">
-                    {related.map((item) => (
-                      <Link
-                        key={item._id}
-                        to={`/prompt/${item._id}`}
-                        className="group rounded-xl overflow-hidden bg-dark-800 border border-dark-600 hover:border-violet-500/40 transition"
-                      >
-                        <img
-                          src={item.imageUrl}
-                          alt={item.title}
-                          className="w-full aspect-[3/4] object-cover group-hover:scale-105 transition duration-300"
-                          loading="lazy"
-                        />
-                        <div className="p-2">
-                          <p className="text-xs text-gray-300 truncate">{item.title}</p>
-                        </div>
-                      </Link>
-                    ))}
-                  </div>
-                </div>
-              )}
+              <div className="pt-3"><h2 className="text-sm font-semibold text-white mb-3">Explore</h2><BannerSlider /></div>
+
             </div>
           </div>
         </div>
